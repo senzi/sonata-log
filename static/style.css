@@ -1,0 +1,265 @@
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    background-color: #FAFAFA;
+    color: #333333;
+    margin: 0;
+    padding: 0;
+    line-height: 1.5;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+header.today-card {
+    background: #FFFFFF;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    padding: 24px;
+    margin-bottom: 32px;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+}
+
+.stat-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.stat-label {
+    font-size: 14px;
+    color: #888;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stat-value {
+    font-size: 32px;
+    font-weight: 600;
+    color: #111;
+}
+
+.session-list {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.session-card {
+    background: #FFFFFF;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+    padding: 24px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.session-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.06);
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    font-size: 14px;
+    color: #666;
+}
+
+.waveform-container {
+    width: 100%;
+    height: 100px;
+    margin-bottom: 16px;
+    background-color: #F7F7F7;
+    /* Slight contrast for empty space */
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+}
+
+.waveform-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid #EEE;
+    padding-top: 16px;
+    font-size: 13px;
+    color: #555;
+    flex-wrap: wrap;
+    /* allow wrapping on small screens */
+    gap: 16px;
+}
+
+.meta-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.meta-label {
+    font-size: 11px;
+    color: #999;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+
+.meta-value {
+    font-weight: 500;
+}
+
+a.download-midi {
+    text-decoration: none;
+    color: #007AFF;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: rgba(0, 122, 255, 0.05);
+    transition: background 0.2s;
+}
+
+a.download-midi:hover {
+    background: rgba(0, 122, 255, 0.15);
+}
+
+.heatmap-section {
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid #EEE;
+}
+
+.heatmap-section h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 24px;
+    color: #333;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Calendar Grid */
+.heatmap-container {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    /* 7 days a week */
+    gap: 8px;
+    margin-bottom: 32px;
+}
+
+.heatmap-cell {
+    aspect-ratio: 1;
+    /* Square cells */
+    border-radius: 6px;
+    background-color: #F5F5F5;
+    position: relative;
+    font-size: 12px;
+    color: #999;
+    padding: 4px;
+    transition: transform 0.1s;
+    cursor: default;
+}
+
+.heatmap-cell:hover {
+    transform: scale(1.05);
+    z-index: 1;
+}
+
+.heatmap-cell.has-data {
+    cursor: pointer;
+}
+
+.heatmap-cell .day-number {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.heatmap-cell .cell-mins {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    font-size: 14px;
+    font-weight: bold;
+    line-height: 1.1;
+    pointer-events: none;
+    /* Let click pass through */
+}
+
+/* Monthly Report */
+.monthly-report {
+    background: #FFFFFF;
+    border: 1px solid #EEE;
+    border-radius: 12px;
+    padding: 24px;
+    display: flex;
+    justify-content: space-around;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.report-item {
+    text-align: center;
+}
+
+.report-item .value {
+    font-size: 20px;
+    font-weight: 600;
+    color: #333;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.report-item .label {
+    font-size: 12px;
+    color: #888;
+    text-transform: uppercase;
+}
+
+/* Date Navigation in Header */
+.date-navigation {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 8px;
+}
+
+.nav-arrow {
+    cursor: pointer;
+    font-size: 18px;
+    color: #666;
+    user-select: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.nav-arrow:hover {
+    background: #F0F0F0;
+}
+
+.nav-arrow.disabled {
+    color: #CCC;
+    cursor: not-allowed;
+    background: transparent;
+}
+
+.current-date-display {
+    font-size: 16px;
+    font-weight: 500;
+    color: #333;
+}

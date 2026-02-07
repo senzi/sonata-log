@@ -209,3 +209,10 @@ __marimo__/
 
 sandbox
 doc
+
+# SonataLog Specific
+uploads/
+archive/
+static/midi/
+instance/
+*.db
