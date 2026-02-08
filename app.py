@@ -168,8 +168,65 @@ def get_sessions():
         except ValueError:
             pass # Ignore invalid date format
 
+    # Sort ascending for grouping
     sessions = query.order_by(Session.date.asc()).all()
-    return jsonify([s.to_dict() for s in sessions])
+    
+    # 2. Grouping Logic (30 min threshold)
+    groups = []
+    if not sessions:
+        return jsonify([])
+        
+    current_group = {
+        "sessions": [sessions[0]],
+        "end_time": sessions[0].date + timedelta(seconds=sessions[0].total_duration)
+    }
+    
+    for i in range(1, len(sessions)):
+        prev_end = current_group["end_time"]
+        curr_start = sessions[i].date
+        curr_end = sessions[i].date + timedelta(seconds=sessions[i].total_duration)
+        
+        # Gap in seconds
+        gap = (curr_start - prev_end).total_seconds()
+        
+        if gap < 1800: # 30 min = 1800 seconds
+            # Add to current group
+            current_group["sessions"].append(sessions[i])
+            current_group["end_time"] = max(current_group["end_time"], curr_end)
+        else:
+            # Seal group and start new
+            groups.append(current_group)
+            current_group = {
+                "sessions": [sessions[i]],
+                "end_time": curr_end
+            }
+            
+    groups.append(current_group)
+    
+    # 3. Format Output
+    output = []
+    for g in groups:
+        s_list = g["sessions"]
+        # Group summary
+        group_start = s_list[0].date
+        group_end = g["end_time"]
+        
+        total_active = sum(s.active_duration for s in s_list)
+        total_keys = sum(s.keystrokes for s in s_list)
+        
+        output.append({
+            "start_time": group_start.isoformat(),
+            "end_time": group_end.isoformat(),
+            "active_duration": total_active,
+            "keystrokes": total_keys,
+            "sessions": [s.to_dict() for s in s_list]
+        })
+        
+    # Return reversed groups (Newest groups at top) if desired? 
+    # User said "Show order is ascending, first practice at top".
+    # So we keep ascending order of groups.
+    
+    return jsonify(output)
 
 @app.route('/api/stats')
 def get_stats():

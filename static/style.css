@@ -52,15 +52,84 @@ header.today-card {
 
 .session-card {
     background: #FFFFFF;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
-    padding: 24px;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    display: none;
 }
 
-.session-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.06);
+/* Session Groups */
+.session-group {
+    background: #FFF;
+    border: 1px solid #E0E0E0;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #F0F0F0;
+}
+
+.group-time {
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+}
+
+.group-stats {
+    font-size: 13px;
+    color: #666;
+    display: flex;
+    gap: 16px;
+}
+
+.group-stats span strong {
+    color: #333;
+    font-weight: 600;
+}
+
+/* Fixed-width Sparklines */
+.waveform-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.waveform-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 48px;
+    /* Fixed height for the row */
+}
+
+.waveform-meta {
+    width: 60px;
+    /* Fixed width for labels like "15 min" */
+    font-size: 12px;
+    color: #888;
+    text-align: right;
+    line-height: 1.2;
+    flex-shrink: 0;
+}
+
+.waveform-container {
+    flex-grow: 1;
+    height: 100%;
+    background: #F9F9F9;
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+}
+
+.waveform-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
 }
 
 .card-header {
@@ -69,23 +138,6 @@ header.today-card {
     margin-bottom: 16px;
     font-size: 14px;
     color: #666;
-}
-
-.waveform-container {
-    width: 100%;
-    height: 100px;
-    margin-bottom: 16px;
-    background-color: #F7F7F7;
-    /* Slight contrast for empty space */
-    border-radius: 8px;
-    overflow: hidden;
-    position: relative;
-}
-
-.waveform-canvas {
-    width: 100%;
-    height: 100%;
-    display: block;
 }
 
 .card-footer {

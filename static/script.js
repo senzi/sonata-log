@@ -33,8 +33,12 @@ function updateDateDisplay() {
     const nextBtn = document.getElementById('next-day');
     if (isToday) {
         nextBtn.classList.add('disabled');
+        document.querySelector('.stat-group:nth-of-type(1) .stat-label').textContent = '今日有效时长';
+        document.querySelector('.stat-group:nth-of-type(2) .stat-label').textContent = '今日击键数';
     } else {
         nextBtn.classList.remove('disabled');
+        document.querySelector('.stat-group:nth-of-type(1) .stat-label').textContent = '该日有效时长';
+        document.querySelector('.stat-group:nth-of-type(2) .stat-label').textContent = '该日击键数';
     }
 }
 
@@ -80,32 +84,74 @@ async function fetchSessions(dateStr) {
             url += `?date=${dateStr}`;
         }
         const response = await fetch(url);
-        const sessions = await response.json();
+        const groups = await response.json();
 
         const container = document.getElementById('session-list');
         container.innerHTML = '';
 
-        const template = document.getElementById('session-card-template');
+        if (groups.length === 0) {
+            container.innerHTML = '<div style="text-align:center; color:#999; padding: 40px;">今日无练习记录</div>';
+            return;
+        }
 
-        sessions.forEach(session => {
-            const clone = document.importNode(template.content, true);
-            const card = clone.querySelector('.session-card');
+        groups.forEach(group => {
+            // Create Group Card
+            const groupDiv = document.createElement('div');
+            groupDiv.className = 'session-group';
 
-            const dateObj = new Date(session.date);
-            clone.querySelector('.session-date').textContent = dateObj.toLocaleDateString();
-            clone.querySelector('.session-time').textContent = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            // Calculate Group Audio Duration & Efficiency
+            let groupAudioDuration = 0;
+            group.sessions.forEach(s => groupAudioDuration += s.total_duration);
+            const groupEfficiency = groupAudioDuration > 0 ? (group.active_duration / groupAudioDuration) : 0;
 
-            clone.querySelector('.session-total-duration').textContent = formatDuration(session.total_duration);
-            clone.querySelector('.session-active-duration').textContent = formatDuration(session.active_duration);
-            clone.querySelector('.session-keystrokes').textContent = session.keystrokes.toLocaleString();
-            clone.querySelector('.session-efficiency').textContent = `${Math.round(session.efficiency * 100)}%`;
+            // Format Time Range
+            const startT = new Date(group.start_time);
+            const endT = new Date(group.end_time);
+            const timeRange = `${startT.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${endT.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
-            const downloadLink = clone.querySelector('.download-midi');
-            downloadLink.style.display = 'none';
+            // Header
+            groupDiv.innerHTML = `
+                <div class="group-header">
+                    <div class="group-time">${timeRange}</div>
+                    <div class="group-stats">
+                        <span>录音时长: <strong>${(groupAudioDuration / 60).toFixed(1)} min</strong></span>
+                        <span>有效: <strong>${(group.active_duration / 60).toFixed(1)} min</strong></span>
+                        <span>效率: <strong>${(groupEfficiency * 100).toFixed(0)}%</strong></span>
+                        <span>触键: <strong>${group.keystrokes.toLocaleString()}</strong></span>
+                        <span>Sessions: <strong>${group.sessions.length}</strong></span>
+                    </div>
+                </div>
+                <div class="waveform-list"></div>
+            `;
 
-            const canvas = clone.querySelector('.waveform-canvas');
-            container.appendChild(clone);
-            requestAnimationFrame(() => renderWaveform(canvas, session));
+            const listContainer = groupDiv.querySelector('.waveform-list');
+
+            // Render Waveforms (Sparklines)
+            group.sessions.forEach(session => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'waveform-item';
+
+                // Meta (Duration)
+                const mins = (session.active_duration / 60).toFixed(1);
+
+                itemDiv.innerHTML = `
+                    <div class="waveform-meta">
+                        <div style="font-weight:600; color:#333;">${mins} min</div>
+                        <div style="font-size:11px; color:#999; margin-top:2px;">${session.keystrokes.toLocaleString()} 音</div>
+                    </div>
+                    <div class="waveform-container">
+                        <canvas class="waveform-canvas"></canvas>
+                    </div>
+                `;
+
+                listContainer.appendChild(itemDiv);
+
+                // Render Canvas
+                const canvas = itemDiv.querySelector('.waveform-canvas');
+                requestAnimationFrame(() => renderSparkline(canvas, session));
+            });
+
+            container.appendChild(groupDiv);
         });
 
     } catch (error) {
@@ -193,9 +239,11 @@ function formatDuration(seconds) {
     return `${minutes.toFixed(1)} min`;
 }
 
-function renderWaveform(canvas, session) {
+// Sparkline Renderer (Fixed Height, Full Width)
+function renderSparkline(canvas, session) {
     const ctx = canvas.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
+    // Wait for layout? frame request handles it mostly.
     const rect = canvas.getBoundingClientRect();
 
     canvas.width = rect.width * dpr;
@@ -205,13 +253,12 @@ function renderWaveform(canvas, session) {
     const width = rect.width;
     const height = rect.height;
     const centerY = height / 2;
-
     ctx.clearRect(0, 0, width, height);
 
     const envelope = session.waveform;
     if (!envelope || envelope.length === 0) return;
 
-    // Waveform
+    // 1. Draw Waveform (Gray)
     ctx.fillStyle = '#E0E0E0';
     ctx.beginPath();
     ctx.moveTo(0, centerY);
@@ -219,29 +266,46 @@ function renderWaveform(canvas, session) {
     for (let i = 0; i < envelope.length; i++) {
         const x = (i / envelope.length) * width;
         const amp = envelope[i];
-        const y = centerY - (amp * height / 2);
+        // Scale amp slightly to fill height nicer
+        const y = centerY - (amp * height * 0.8 / 2);
         ctx.lineTo(x, y);
     }
     for (let i = envelope.length - 1; i >= 0; i--) {
         const x = (i / envelope.length) * width;
         const amp = envelope[i];
-        const y = centerY + (amp * height / 2);
+        const y = centerY + (amp * height * 0.8 / 2);
         ctx.lineTo(x, y);
     }
     ctx.closePath();
     ctx.fill();
 
-    // Intervals
-    ctx.fillStyle = 'rgba(0, 122, 255, 0.1)';
+    // 2. Draw Inactive Overlay (Slacking) - "Draw overlay on gaps"
+    // Semi-transparent overlay on non-active parts
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
     const totalDuration = session.total_duration;
 
-    if (session.intervals) {
-        session.intervals.forEach(interval => {
+    if (session.intervals && session.intervals.length > 0) {
+        let lastEnd = 0;
+        const sortedIntervals = session.intervals.sort((a, b) => a[0] - b[0]);
+
+        sortedIntervals.forEach(interval => {
             const [start, end] = interval;
-            const startX = (start / totalDuration) * width;
-            const endX = (end / totalDuration) * width;
-            const w = endX - startX;
-            ctx.fillRect(startX, 0, w, height);
+
+            if (start > lastEnd) {
+                const gapStart = (lastEnd / totalDuration) * width;
+                const gapEnd = (start / totalDuration) * width;
+                ctx.fillRect(gapStart, 0, gapEnd - gapStart, height);
+            }
+            lastEnd = Math.max(lastEnd, end);
         });
+
+        if (lastEnd < totalDuration) {
+            const gapStart = (lastEnd / totalDuration) * width;
+            const gapEnd = width;
+            ctx.fillRect(gapStart, 0, gapEnd - gapStart, height);
+        }
+    } else {
+        // All slacking
+        ctx.fillRect(0, 0, width, height);
     }
 }
