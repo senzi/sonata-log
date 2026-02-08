@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SonataLog - 数据管理后台</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #fafafa;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 24px;
+            border-radius: 8px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        h1 {
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .back-link {
+            font-size: 14px;
+            text-decoration: none;
+            color: #666;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+            font-size: 14px;
+        }
+
+        th,
+        td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        th {
+            background: #f9f9f9;
+            font-weight: 600;
+            color: #555;
+        }
+
+        tr:hover {
+            background: #f5f5f5;
+        }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-ok {
+            background: #e6fffa;
+            color: #007a5e;
+        }
+
+        .status-err {
+            background: #fff5f5;
+            color: #c00;
+        }
+
+        .actions button {
+            border: none;
+            background: none;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            margin-right: 4px;
+            transition: background 0.2s;
+        }
+
+        .btn-delete {
+            color: #d93025;
+            background: rgba(217, 48, 37, 0.05);
+        }
+
+        .btn-delete:hover {
+            background: rgba(217, 48, 37, 0.15);
+        }
+
+        .btn-reprocess {
+            color: #1a73e8;
+            background: rgba(26, 115, 232, 0.05);
+        }
+
+        .btn-reprocess:hover {
+            background: rgba(26, 115, 232, 0.15);
+        }
+
+        .btn-recalc {
+            color: #555;
+            background: rgba(0, 0, 0, 0.05);
+        }
+
+        .btn-recalc:hover {
+            background: rgba(0, 0, 0, 0.15);
+        }
+
+        .archive-status {
+            font-size: 12px;
+            color: #888;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>
+            <span>数据管理后台</span>
+            <a href="/" class="back-link">← 返回仪表盘</a>
+        </h1>
+
+        <div style="margin-bottom: 16px; color: #666; font-size: 13px;">
+            共找到 <strong id="total-count">0</strong> 条记录。
+            此处操作请谨慎。
+        </div>
+
+        <table id="session-table">
+            <thead>
+                <tr>
+                    <th>日期</th>
+                    <th>文件名</th>
+                    <th>时长 (Total / Active)</th>
+                    <th>Keystrokes / Eff</th>
+                    <th>归档/MIDI</th>
+                    <th style="text-align: right;">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Populated by JS -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        async function loadData() {
+            const resp = await fetch('/api/admin/sessions');
+            const data = await resp.json();
+            document.getElementById('total-count').innerText = data.length;
+
+            const tbody = document.querySelector('#session-table tbody');
+            tbody.innerHTML = '';
+
+            data.forEach(item => {
+                const tr = document.createElement('tr');
+
+                const date = new Date(item.date).toLocaleString([], {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                const duration = `${(item.total_duration / 60).toFixed(1)}m / ${(item.active_duration / 60).toFixed(1)}m`;
+                const efficiency = (item.active_duration / item.total_duration * 100).toFixed(1) + '%';
+
+                let archiveStatus = '';
+                if (item.has_archive) {
+                    archiveStatus = '<span class="status-badge status-ok">已归档</span>';
+                } else {
+                    archiveStatus = '<span class="status-badge status-err">缺失</span>';
+                }
+
+                tr.innerHTML = `
+                    <td>${date}</td>
+                    <td title="${item.filename}">${item.filename}</td>
+                    <td>${duration}</td>
+                    <td>${item.keystrokes} <small class="text-muted">(${efficiency})</small></td>
+                    <td>${archiveStatus}</td>
+                    <td class="actions" style="width: 280px; text-align: right;">
+                        <button class="btn-recalc" onclick="recalcStats('${item.hash}')">仅重算</button>
+                        ${item.has_archive ? `<button class="btn-reprocess" onclick="reprocess('${item.hash}')">全重析</button>` : ''}
+                        <button class="btn-delete" onclick="deleteSession('${item.hash}')">删除</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function deleteSession(hash) {
+            if (!confirm('确定要删除这条记录吗？(关联的归档文件和MIDI也会被处理)')) return;
+            try {
+                const resp = await fetch(`/api/admin/session/${hash}`, {
+                    method: 'DELETE'
+                });
+                if (resp.ok) {
+                    loadData();
+                } else {
+                    alert('删除失败');
+                }
+            } catch (e) {
+                console.error(e);
+                alert('Error');
+            }
+        }
+
+        async function reprocess(hash) {
+            if (!confirm('确定要全量重新解析这条记录吗？\n这将删除当前数据、MIDI文件并重新进行音频到MIDI的转换。\n耗时较长。')) return;
+            const btn = event.target;
+            btn.innerText = '解析中...';
+            btn.disabled = true;
+            try {
+                const resp = await fetch(`/api/admin/session/${hash}/reprocess`, {
+                    method: 'POST'
+                });
+                const res = await resp.json();
+                if (resp.ok) {
+                    alert('重解析成功');
+                    loadData();
+                } else {
+                    alert('重解析失败: ' + res.error);
+                }
+                btn.innerText = '全重析';
+                btn.disabled = false;
+            } catch (e) {
+                console.error(e);
+                alert('Error');
+                btn.innerText = '全重析';
+                btn.disabled = false;
+            }
+        }
+
+        async function recalcStats(hash) {
+            // "仅重算"
+            const btn = event.target;
+            btn.innerText = '计算中...';
+            btn.disabled = true;
+            try {
+                const resp = await fetch(`/api/admin/session/${hash}/recalc_stats`, {
+                    method: 'POST'
+                });
+                const res = await resp.json();
+                if (resp.ok) {
+                    // alert('更新成功'); // Alert might be annoying if batching, but for now fine.
+                    loadData();
+                } else {
+                    alert('计算失败: ' + res.error);
+                }
+                btn.innerText = '仅重算';
+                btn.disabled = false;
+            } catch (e) {
+                console.error(e);
+                alert('Error');
+                btn.innerText = '仅重算';
+                btn.disabled = false;
+            }
+        }
+
+        loadData();
+    </script>
+</body>
+
+</html>

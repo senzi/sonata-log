@@ -1,5 +1,6 @@
 import os
 import shutil
+import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MIDI_DIR = os.path.join(BASE_DIR, 'static', 'midi')
@@ -10,13 +11,20 @@ UPLOADS_DIR = os.path.join(BASE_DIR, 'uploads')
 def reset_and_reprocess():
     print("--- 开始重置与重跑流程 ---")
 
-    # 1. 删除生成的 MIDI 文件
+    # 1. 清空 MIDI 目录 (避免直接删除文件夹导致 WinError 32)
     if os.path.exists(MIDI_DIR):
         print(f"正在清空 MIDI 目录: {MIDI_DIR}")
-        shutil.rmtree(MIDI_DIR)
-        os.makedirs(MIDI_DIR)
+        for filename in os.listdir(MIDI_DIR):
+            file_path = os.path.join(MIDI_DIR, filename)
+            try:
+                if os.path.isfile(file_path) or os.path.islink(file_path):
+                    os.unlink(file_path)
+                elif os.path.isdir(file_path):
+                    shutil.rmtree(file_path)
+            except Exception as e:
+                print(f"无法删除 {file_path}: {e}")
     else:
-        print("MIDI 目录不存在，无需删除。")
+        print("MIDI 目录不存在，创建中...")
         os.makedirs(MIDI_DIR, exist_ok=True)
 
     # 2. 删除数据库

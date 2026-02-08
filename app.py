@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
-from analyzer import get_file_hash, analyze_audio
+from analyzer import get_file_hash, analyze_audio, calculate_metrics_from_midi
 
 app = Flask(__name__)
 # Configure DB
@@ -52,6 +52,8 @@ class Session(db.Model):
             'midi_url': self.midi_url
         }
 
+import shutil
+
 # Background Worker
 def process_uploads():
     """Background thread to process files in uploads/"""
@@ -67,6 +69,22 @@ def process_uploads():
                 
                 print(f"Processing {f}...")
                 
+                # Check for file stability (avoid processing partial copies)
+                try:
+                    init_size = os.path.getsize(file_path)
+                    time.sleep(1) # Wait a bit
+                    final_size = os.path.getsize(file_path)
+                    if init_size != final_size:
+                        print(f"File {f} is changing (copying?), skipping for now.")
+                        continue
+                    # Also check for zero size
+                    if final_size == 0:
+                         print(f"File {f} is empty, skipping.")
+                         continue
+                except Exception as e:
+                    print(f"Error checking file stability {f}: {e}")
+                    continue
+
                 # 1. Hashing
                 file_hash = get_file_hash(file_path)
                 
@@ -92,6 +110,23 @@ def process_uploads():
                         dt_end = datetime.fromtimestamp(mtime)
                         # result['total_duration'] is float seconds
                         dt_start = dt_end - timedelta(seconds=result['total_duration'])
+                        
+                        # Fallback: Check filename for Date (YYMMDD prefix)
+                        # Example: 260207_0009.wav -> 2026-02-07
+                        if len(f) >= 6 and f[:6].isdigit():
+                            try:
+                                date_from_name = datetime.strptime(f[:6], '%y%m%d')
+                                # If filename date differs from mtime date, trust filename for Day
+                                if date_from_name.date() != dt_start.date():
+                                    print(f"Date correction for {f}: {dt_start.date()} -> {date_from_name.date()}")
+                                    dt_start = dt_start.replace(
+                                        year=date_from_name.year,
+                                        month=date_from_name.month,
+                                        day=date_from_name.day
+                                    )
+                            except ValueError:
+                                pass # Filename start with numbers but not a valid YYMMDD date
+
                     except Exception as e:
                         print(f"Error extracting time metadata, falling back to now: {e}")
                         dt_start = datetime.now()
@@ -143,9 +178,114 @@ def process_uploads():
         
         time.sleep(5) # Check every 5 seconds
 
-# Start Worker
+# External Drive Sync Worker
+def scan_external_drives():
+    """Scans external drives for wav files and syncs to uploads"""
+    print("External drive scanner started...")
+    
+    HISTORY_FILE = os.path.join(INSTANCE_FOLDER, 'sync_history.json')
+    
+    def load_history():
+        if os.path.exists(HISTORY_FILE):
+            try:
+                with open(HISTORY_FILE, 'r') as f:
+                    return json.load(f)
+            except:
+                return {}
+        return {}
+
+    def save_history(h):
+        try:
+            with open(HISTORY_FILE, 'w') as f:
+                json.dump(h, f)
+        except Exception as e:
+            print(f"Error saving sync history: {e}")
+
+    while True:
+        try:
+            # Detect Candidate Drives (D: to Z:)
+            import string
+            drives = []
+            for letter in string.ascii_uppercase:
+                if letter < 'D': continue 
+                drive_path = f"{letter}:\\"
+                music_path = os.path.join(drive_path, 'MUSIC')
+                if os.path.exists(music_path):
+                    drives.append(music_path)
+            
+            if drives:
+                history = load_history()
+                has_updates = False
+                
+                for music_dir in drives:
+                    # Scan for wav files
+                    try:
+                        for f in os.listdir(music_dir):
+                            if not f.lower().endswith('.wav'):
+                                continue
+                                
+                            full_path = os.path.join(music_dir, f)
+                            try:
+                                stats = os.stat(full_path)
+                                file_size = stats.st_size
+                                file_mtime = stats.st_mtime
+                                
+                                # Identify file by path
+                                file_key = full_path
+                                
+                                # Check History
+                                if file_key in history:
+                                    last_rec = history[file_key]
+                                    if last_rec['size'] == file_size and abs(last_rec['mtime'] - file_mtime) < 1:
+                                        continue # Skip, already processed
+                                
+                                # Also Check Archive (User Request: "Compare with Archive")
+                                # Simple check: if filename exists in archive AND size matches, consider it done.
+                                # This helps if history is lost but files are archived.
+                                archive_path = os.path.join(BASE_DIR, 'archive', f)
+                                if os.path.exists(archive_path):
+                                    arc_stats = os.stat(archive_path)
+                                    if arc_stats.st_size == file_size:
+                                        # Likely same file
+                                        print(f"Skipping {f} (Found in Archive)")
+                                        # Update history to prevent re-check
+                                        history[file_key] = {'size': file_size, 'mtime': file_mtime}
+                                        has_updates = True
+                                        continue
+                                
+                                # Check uploads (In case currently processing)
+                                upload_dest = os.path.join(UPLOAD_FOLDER, f)
+                                if os.path.exists(upload_dest):
+                                    continue 
+                                    
+                                # COPY
+                                print(f"Syncing new file: {full_path} -> {upload_dest}")
+                                shutil.copy2(full_path, upload_dest)
+                                
+                                # Update History
+                                history[file_key] = {'size': file_size, 'mtime': file_mtime}
+                                has_updates = True
+                                
+                            except Exception as e:
+                                print(f"Error checking file {f}: {e}")
+                                
+                    except Exception as e:
+                        print(f"Error accessing {music_dir}: {e}")
+                
+                if has_updates:
+                    save_history(history)
+                    
+        except Exception as e:
+            print(f"Scanner error: {e}")
+            
+        time.sleep(10) # Scan every 10 seconds
+
+# Start Workers
 worker_thread = threading.Thread(target=process_uploads, daemon=True)
 worker_thread.start()
+
+scanner_thread = threading.Thread(target=scan_external_drives, daemon=True)
+scanner_thread.start()
 
 # Routes
 @app.route('/')
@@ -310,6 +450,116 @@ def get_month_stats():
         },
         'daily_map': daily_map
     })
+
+# Admin Routes
+@app.route('/admin')
+def admin_page():
+    return render_template('admin.html')
+
+@app.route('/api/admin/sessions')
+def admin_list_sessions():
+    sessions = Session.query.order_by(Session.date.desc()).all()
+    result = []
+    
+    # Simple cache for archive check performance if many files?
+    # No need for now.
+    
+    for s in sessions:
+        # Check archive existence
+        # Note: Filename might be different if it was renamed during archive?
+        # Current logic tries to keep filename.
+        archive_path = os.path.join(BASE_DIR, 'archive', s.filename)
+        
+        result.append({
+            "hash": s.hash,
+            "date": s.date.isoformat(),
+            "filename": s.filename,
+            "total_duration": s.total_duration,
+            "active_duration": s.active_duration,
+            "keystrokes": s.keystrokes,
+            "has_archive": os.path.exists(archive_path)
+        })
+    return jsonify(result)
+
+@app.route('/api/admin/session/<hash_id>', methods=['DELETE'])
+def admin_delete_session(hash_id):
+    with app.app_context():
+        s = db.session.get(Session, hash_id)
+        if not s:
+             return jsonify({"error": "Not found"}), 404
+        
+        # Delete MIDI
+        if s.midi_url:
+             midi_path = os.path.join(MIDI_FOLDER, s.midi_url)
+             if os.path.exists(midi_path):
+                 try: os.remove(midi_path)
+                 except: pass
+        
+        db.session.delete(s)
+        db.session.commit()
+        return jsonify({"success": True})
+
+@app.route('/api/admin/session/<hash_id>/reprocess', methods=['POST'])
+def admin_reprocess_session(hash_id):
+    with app.app_context():
+        s = db.session.get(Session, hash_id)
+        if not s:
+             return jsonify({"error": "Not found"}), 404
+        
+        archive_path = os.path.join(BASE_DIR, 'archive', s.filename)
+        if not os.path.exists(archive_path):
+             return jsonify({"error": "Archive file not found in 'archive/'"}), 400
+        
+        try:
+            # Copy back to uploads
+            dest = os.path.join(UPLOAD_FOLDER, s.filename)
+            print(f"Admin: Reprocessing {s.filename}, copy to {dest}")
+            shutil.copy2(archive_path, dest)
+            
+            # Delete DB record & MIDI to ensure clean slate
+            if s.midi_url:
+                 midi_path = os.path.join(MIDI_FOLDER, s.midi_url)
+                 if os.path.exists(midi_path):
+                     try: os.remove(midi_path)
+                     except: pass
+
+            db.session.delete(s)
+            db.session.commit()
+            
+            return jsonify({"success": True})
+        except Exception as e:
+            print(f"Reprocess error: {e}")
+            return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/session/<hash_id>/recalc_stats', methods=['POST'])
+def admin_recalc_stats(hash_id):
+    with app.app_context():
+        s = db.session.get(Session, hash_id)
+        if not s or not s.midi_url:
+             return jsonify({"error": "No MIDI found"}), 404
+        
+        midi_path = os.path.join(MIDI_FOLDER, s.midi_url)
+        if not os.path.exists(midi_path):
+             return jsonify({"error": "MIDI file missing"}), 404
+        
+        # We need duration_orig. It should be in s.total_duration
+        if not s.total_duration:
+             return jsonify({"error": "Total duration missing"}), 400
+        
+        metrics = calculate_metrics_from_midi(midi_path, s.total_duration)
+        if metrics:
+            s.active_duration = metrics['active_duration']
+            s.efficiency = metrics['efficiency']
+            s.keystrokes = metrics['keystrokes']
+            if metrics['intervals']:
+                s.intervals_json = json.dumps(metrics['intervals'])
+            else:
+                s.intervals_json = json.dumps([])
+                
+            db.session.commit()
+            return jsonify({"success": True})
+        else:
+            return jsonify({"error": "Recalculation failed"}), 500
 
 if __name__ == '__main__':
     with app.app_context():

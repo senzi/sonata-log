@@ -74,6 +74,18 @@ def analyze_audio(file_path, output_midi_dir):
     efficiency_midi = 0.0
     
     try:
+        # Pre-calculate output path to clean up old files (force overwrite)
+        base_name = os.path.basename(file_path)
+        name_without_ext = os.path.splitext(base_name)[0]
+        generated_midi_name = name_without_ext + "_basic_pitch.mid"
+        expected_midi_path = os.path.join(output_midi_dir, generated_midi_name)
+        
+        if os.path.exists(expected_midi_path):
+            try:
+                os.remove(expected_midi_path)
+            except Exception as e:
+                print(f"Warning: Could not remove old MIDI {expected_midi_path}: {e}")
+
         # Predict and save
         predict_and_save(
             audio_path_list=[file_path],
@@ -85,91 +97,21 @@ def analyze_audio(file_path, output_midi_dir):
             model_or_model_path=ICASSP_2022_MODEL_PATH
         )
         
-        base_name = os.path.basename(file_path)
-        name_without_ext = os.path.splitext(base_name)[0]
-        generated_midi_name = name_without_ext + "_basic_pitch.mid"
-        midi_path = os.path.join(output_midi_dir, generated_midi_name)
-        
-        if os.path.exists(midi_path):
+        if os.path.exists(expected_midi_path):
             midi_filename = generated_midi_name
+            midi_path = expected_midi_path # Use consistency
             
-            # --- New MIDI-based Efficiency Calculation ---
-            mid = mido.MidiFile(midi_path)
-            
-            # 1. Extract note start/end times
-            # Note: mido messages have 'time' as delta time. We need absolute time.
-            # basic-pitch MIDI files are usually Type 0 or 1.
-            # We need to iterate and accumulate time.
-            
-            notes = []
-            
-            # Helper to get absolute timing from MIDI
-            # mido.MidiFile iteration yields messages with 'time' in seconds if not using raw ticks
-            # basic-pitch output usually has normalized logic. 
-            
-            abs_time = 0.0
-            pending_notes = {} # note_number -> start_time
-            
-            for msg in mid:
-                abs_time += msg.time
-                
-                if msg.type == 'note_on' and msg.velocity > 0:
-                    keystrokes += 1
-                    if msg.note not in pending_notes:
-                         pending_notes[msg.note] = abs_time
-                         
-                elif (msg.type == 'note_off') or (msg.type == 'note_on' and msg.velocity == 0):
-                    if msg.note in pending_notes:
-                        start_t = pending_notes.pop(msg.note)
-                        notes.append((start_t, abs_time))
-            
-            # Also close any pending notes at the end? (Though typically note_off should exist)
-            for note, start_t in pending_notes.items():
-                notes.append((start_t, abs_time))
-                
-            # 2. Merge Intervals
-            if notes:
-                notes.sort(key=lambda x: x[0])
-                merged = []
-                
-                # Logic: Gap Threshold = 2.0s
-                # Merge logic from user request
-                gap_threshold = 2.0
-                
-                # Initial interval
-                curr_start = notes[0][0]
-                curr_end = notes[0][1]
-                
-                for i in range(1, len(notes)):
-                    next_start, next_end = notes[i]
-                    
-                    if next_start - curr_end <= gap_threshold:
-                        # Close enough, merge
-                        curr_end = max(curr_end, next_end)
-                    else:
-                        # Too far, seal current and start new
-                        start_padded = max(0, curr_start - 0.5)
-                        end_padded = min(duration_orig, curr_end + 0.5)
-                        merged.append([start_padded, end_padded])
-                        
-                        curr_start = next_start
-                        curr_end = next_end
-                
-                # Append last
-                start_padded = max(0, curr_start - 0.5)
-                end_padded = min(duration_orig, curr_end + 0.5)
-                merged.append([start_padded, end_padded])
-                
-                intervals_sec = merged
-                
-                # 3. Calculate Efficiency
-                active_duration_midi = sum(end - start for start, end in merged)
-                efficiency_midi = (active_duration_midi / duration_orig) if duration_orig > 0 else 0
+            # Use shared calculation logic
+            metrics = calculate_metrics_from_midi(midi_path, duration_orig)
+            if metrics:
+                active_duration_midi = metrics['active_duration']
+                efficiency_midi = metrics['efficiency']
+                keystrokes = metrics['keystrokes']
+                intervals_sec = metrics['intervals']
                 
     except Exception as e:
         print(f"MIDI generation/analysis failed: {e}")
-        # Fallback to 0 or original audio stats? 
-        # User explicitly wants MIDI based. If it fails, 0 is safer than wrong audio calc.
+        # Fallback to 0
 
     return {
         "total_duration": duration_orig,
@@ -180,3 +122,91 @@ def analyze_audio(file_path, output_midi_dir):
         "waveform": generate_waveform_data(y_norm, sr),
         "midi_filename": midi_filename
     }
+
+def calculate_metrics_from_midi(midi_path, duration_orig):
+    """
+    Recalculates metrics (active duration, efficiency, keystrokes) 
+    from a MIDI file using current thresholds.
+    """
+    try:
+        mid = mido.MidiFile(midi_path)
+        
+        # User defined threshold for "valid" practice
+        MIN_VELOCITY = 70
+        
+        # 1. Extract valid note intervals
+        valid_raw_intervals = []
+        active_notes = {} # note -> start_time
+        
+        current_time = 0.0
+        keystrokes = 0
+        
+        # mido.MidiFile is iterable and yields messages in playback order (delta times applied)
+        for msg in mid:
+            current_time += msg.time
+            
+            if msg.type == 'note_on' and msg.velocity >= MIN_VELOCITY:
+                # Valid key press
+                keystrokes += 1
+                active_notes[msg.note] = current_time
+                
+            elif (msg.type == 'note_off') or (msg.type == 'note_on' and msg.velocity == 0):
+                # Note ending
+                if msg.note in active_notes:
+                    start_t = active_notes.pop(msg.note)
+                    end_t = current_time
+                    if end_t > start_t: 
+                        valid_raw_intervals.append((start_t, end_t))
+        
+        # Close any lingering notes
+        for note, start_t in active_notes.items():
+            if current_time > start_t:
+                valid_raw_intervals.append((start_t, current_time))
+        
+        # 2. Merge Intervals
+        intervals_sec = []
+        active_duration_midi = 0.0
+        efficiency_midi = 0.0
+        
+        if valid_raw_intervals:
+            valid_raw_intervals.sort(key=lambda x: x[0])
+            merged = []
+            
+            gap_threshold = 2.0
+            
+            # Initial
+            curr_start, curr_end = valid_raw_intervals[0]
+            
+            for i in range(1, len(valid_raw_intervals)):
+                next_start, next_end = valid_raw_intervals[i]
+                
+                if next_start - curr_end <= gap_threshold:
+                    # Close enough, merge
+                    curr_end = max(curr_end, next_end)
+                else:
+                    # Seal
+                    start_padded = max(0, curr_start - 0.5)
+                    end_padded = min(duration_orig, curr_end + 0.5)
+                    merged.append([start_padded, end_padded])
+                    
+                    curr_start = next_start
+                    curr_end = next_end
+            
+            # Last
+            start_padded = max(0, curr_start - 0.5)
+            end_padded = min(duration_orig, curr_end + 0.5)
+            merged.append([start_padded, end_padded])
+            
+            intervals_sec = merged
+            active_duration_midi = sum(end - start for start, end in merged)
+            efficiency_midi = (active_duration_midi / duration_orig) if duration_orig > 0 else 0
+            
+        return {
+            "active_duration": active_duration_midi,
+            "efficiency": efficiency_midi,
+            "keystrokes": keystrokes,
+            "intervals": intervals_sec
+        }
+    except Exception as e:
+        print(f"Error recalculating metrics from MIDI: {e}")
+        return None

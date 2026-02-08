@@ -315,3 +315,110 @@ a.download-midi:hover {
     font-weight: 500;
     color: #333;
 }
+
+@media (max-width: 768px) {
+    .container {
+        padding: 16px;
+    }
+
+    /* Top Card Stacking */
+    header.today-card {
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        padding: 20px;
+        margin-bottom: 24px;
+    }
+
+    .date-navigation {
+        width: 100%;
+        justify-content: center;
+        margin-bottom: 8px;
+    }
+
+    /* Stats Grid */
+    .stat-group {
+        width: 45%;
+        /* 2 per row */
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        margin: 5px 0;
+    }
+
+    /* Session Groups */
+    .session-group {
+        padding: 16px;
+    }
+
+    .group-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .group-stats {
+        flex-wrap: wrap;
+        gap: 8px;
+        width: 100%;
+    }
+
+    .group-stats span {
+        background: #F5F5F5;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        width: 48%;
+        /* Grid of stats */
+        box-sizing: border-box;
+        text-align: center;
+        display: inline-block;
+    }
+
+    /* Waveform Items */
+    .waveform-item {
+        gap: 8px;
+    }
+
+    .waveform-meta {
+        width: 50px;
+        font-size: 11px;
+    }
+
+    /* Calendar */
+    .heatmap-cell {
+        /* Let aspect ratio handle height, but text needs shrinking */
+        padding: 2px;
+    }
+
+    .heatmap-cell .day-number {
+        font-size: 9px;
+        top: 2px;
+        left: 2px;
+    }
+
+    .heatmap-cell .cell-mins {
+        font-size: 10px;
+    }
+
+    .heatmap-section h3 {
+        font-size: 16px;
+    }
+
+    /* Monthly Report */
+    .monthly-report {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        padding: 16px;
+    }
+
+    .report-item {
+        width: auto;
+        margin: 0;
+    }
+
+    .report-item .value {
+        font-size: 18px;
+    }
+}
