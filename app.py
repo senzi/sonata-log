@@ -247,4 +247,16 @@ def get_month_stats():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True, use_reloader=False) # use_reloader=False to prevent double worker in debug mode
+    
+    # Get local IP for convenience
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        print(f" * LAN Access: http://{local_ip}:5000")
+    except:
+        print(" * Could not determine LAN IP")
+
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
