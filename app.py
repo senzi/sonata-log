@@ -154,79 +154,89 @@ def index():
 
 @app.route('/api/sessions')
 def get_sessions():
-    # Filter out sessions with < 50 keystrokes ("Touch Fish" / Noise)
-    query = Session.query.filter(Session.keystrokes >= 50)
-    
-    # Optional Date Filter
-    date_str = request.args.get('date')
-    if date_str:
-        try:
-            target_date = datetime.strptime(date_str, '%Y-%m-%d')
-            start_of_day = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0)
-            end_of_day = datetime(target_date.year, target_date.month, target_date.day, 23, 59, 59)
-            query = query.filter(Session.date >= start_of_day, Session.date <= end_of_day)
-        except ValueError:
-            pass # Ignore invalid date format
+    try:
+        # Filter out sessions with < 50 keystrokes ("Touch Fish" / Noise)
+        # Filter out empty/noise sessions (< 10 keystrokes)
+        query = Session.query.filter(Session.keystrokes >= 10)
+        
+        # Optional Date Filter
+        date_str = request.args.get('date')
+        if date_str:
+            try:
+                target_date = datetime.strptime(date_str, '%Y-%m-%d')
+                start_of_day = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0)
+                end_of_day = datetime(target_date.year, target_date.month, target_date.day, 23, 59, 59)
+                query = query.filter(Session.date >= start_of_day, Session.date <= end_of_day)
+            except ValueError:
+                print(f"Invalid date format received: {date_str}")
+                pass 
 
-    # Sort ascending for grouping
-    sessions = query.order_by(Session.date.asc()).all()
-    
-    # 2. Grouping Logic (30 min threshold)
-    groups = []
-    if not sessions:
-        return jsonify([])
+        # Sort ascending for grouping
+        sessions = query.order_by(Session.date.asc()).all()
         
-    current_group = {
-        "sessions": [sessions[0]],
-        "end_time": sessions[0].date + timedelta(seconds=sessions[0].total_duration)
-    }
-    
-    for i in range(1, len(sessions)):
-        prev_end = current_group["end_time"]
-        curr_start = sessions[i].date
-        curr_end = sessions[i].date + timedelta(seconds=sessions[i].total_duration)
-        
-        # Gap in seconds
-        gap = (curr_start - prev_end).total_seconds()
-        
-        if gap < 1800: # 30 min = 1800 seconds
-            # Add to current group
-            current_group["sessions"].append(sessions[i])
-            current_group["end_time"] = max(current_group["end_time"], curr_end)
-        else:
-            # Seal group and start new
-            groups.append(current_group)
-            current_group = {
-                "sessions": [sessions[i]],
-                "end_time": curr_end
-            }
+        # 2. Grouping Logic (30 min threshold)
+        groups = []
+        if not sessions:
+            return jsonify([])
             
-    groups.append(current_group)
-    
-    # 3. Format Output
-    output = []
-    for g in groups:
-        s_list = g["sessions"]
-        # Group summary
-        group_start = s_list[0].date
-        group_end = g["end_time"]
+        # Helper to ensure float
+        def get_total_duration(s):
+            return s.total_duration if s.total_duration is not None else 0.0
+
+        current_group = {
+            "sessions": [sessions[0]],
+            "end_time": sessions[0].date + timedelta(seconds=get_total_duration(sessions[0]))
+        }
         
-        total_active = sum(s.active_duration for s in s_list)
-        total_keys = sum(s.keystrokes for s in s_list)
+        for i in range(1, len(sessions)):
+            prev_end = current_group["end_time"]
+            curr_start = sessions[i].date
+            curr_end = sessions[i].date + timedelta(seconds=get_total_duration(sessions[i]))
+            
+            # Gap in seconds
+            gap = (curr_start - prev_end).total_seconds()
+            
+            if gap < 1800: # 30 min = 1800 seconds
+                # Add to current group
+                current_group["sessions"].append(sessions[i])
+                current_group["end_time"] = max(current_group["end_time"], curr_end)
+            else:
+                # Seal group and start new
+                groups.append(current_group)
+                current_group = {
+                    "sessions": [sessions[i]],
+                    "end_time": curr_end
+                }
+                
+        groups.append(current_group)
         
-        output.append({
-            "start_time": group_start.isoformat(),
-            "end_time": group_end.isoformat(),
-            "active_duration": total_active,
-            "keystrokes": total_keys,
-            "sessions": [s.to_dict() for s in s_list]
-        })
-        
-    # Return reversed groups (Newest groups at top) if desired? 
-    # User said "Show order is ascending, first practice at top".
-    # So we keep ascending order of groups.
-    
-    return jsonify(output)
+        # 3. Format Output
+        output = []
+        for g in groups:
+            s_list = g["sessions"]
+            if not s_list:
+                continue
+                
+            # Group summary
+            group_start = s_list[0].date
+            group_end = g["end_time"]
+            
+            # Safe summing
+            total_active = sum((s.active_duration or 0) for s in s_list)
+            total_keys = sum((s.keystrokes or 0) for s in s_list)
+            
+            output.append({
+                "start_time": group_start.isoformat(),
+                "end_time": group_end.isoformat(),
+                "active_duration": total_active,
+                "keystrokes": total_keys,
+                "sessions": [s.to_dict() for s in s_list]
+            })
+            
+        return jsonify(output)
+    except Exception as e:
+        print(f"Error in get_sessions: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/stats')
 def get_stats():
@@ -246,7 +256,7 @@ def get_stats():
     sessions = Session.query.filter(
         Session.date >= start_of_day, 
         Session.date <= end_of_day,
-        Session.keystrokes >= 50
+        Session.keystrokes >= 10
     ).all()
     
     total_active_duration = sum(s.active_duration for s in sessions)
@@ -275,7 +285,7 @@ def get_month_stats():
     sessions = Session.query.filter(
         Session.date >= start_date, 
         Session.date < end_date,
-        Session.keystrokes >= 50
+        Session.keystrokes >= 10
     ).all()
     
     # Aggregate for Monthly Report

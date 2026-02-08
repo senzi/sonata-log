@@ -1,46 +1,70 @@
-# SonataLog
+# SonataLog - 钢琴练习自动追踪与分析系统
 
-SonataLog is a piano practice analysis dashboard that automatically tracks your practice sessions, analyzes efficiency, and converts pure practice segments to MIDI.
+SonataLog 是一个智能化的钢琴练习记录工具。它能够自动通过音频分析你的练习录音，生成详细的练习数据报告，帮助你量化练习成果，可视化进步轨迹。
 
-## Features
+## ✨ 核心功能
 
-- **Automatic Monitoring**: Watches the `uploads/` folder for new WAV recordings.
-- **Practice Analysis**: Uses adaptive thresholding to detect valid practice intervals (excluding pauses/distractions).
-- **MIDI Conversion**: Converts pure audio segments to MIDI using Google's Basic Pitch.
-- **Visual Dashboard**:
-  - Daily Stats (Duration, Keystrokes, Efficiency).
-  - Waveform visualization with practice intervals highlighted.
-  - Heatmap of practice history.
-- **Data Archival**: Stores analysis data in SQLite and keeps organized MIDI files.
+1.  **全自动流程**
+    *   只需将录音文件放入 `uploads` 目录，系统后台即会自动检测并处理。
+    *   处理完成后，原始文件会自动归档至 `archive` 目录，保持工作区整洁。
 
-## Installation
+2.  **智能音频分析**
+    *   **精准识别**: 利用 Spotify 的 `basic-pitch` 模型将音频转换为 MIDI 数据。
+    *   **效率计算**: 自动剔除练习中的长暂停和休息时间，计算真实的“有效练习时长”和“练习效率”。
+    *   **数据统计**: 统计总击键数 (Keystrokes)、总时长等关键指标。
 
-1. Install dependencies:
-   ```bash
-   pip install flask flask-sqlalchemy librosa numpy soundfile mido basic-pitch
-   ```
+3.  **可视化仪表盘**
+    *   **今日概览**: 实时显示当天的有效练习时长、击键数及平均效率。
+    *   **波形回顾**: 每一个练习片段都配有波形图和详细数据，支持下载生成的 MIDI 文件。
+    *   **练习日历**: 类似 GitHub 的热力图 (Heatmap) 展示每月的练习密度，直观呈现坚持情况。
+    *   **月度报告**: 自动生成每月的汇总报告，包括总投入时间和总有效产出。
 
-2. Run the application:
-   ```bash
-   python app.py
-   ```
+## 🛠️ 技术栈
 
-3. Open your browser and navigate to:
-   `http://localhost:5000`
+*   **后端**: Python (Flask)
+*   **数据存储**: SQLite (SQLAlchemy)
+*   **音频处理**: Librosa, Basic Pitch, Mido, NumPy
+*   **前端**: HTML5, CSS3, Vanilla JavaScript (无繁杂的前端构建流程)
 
-## Usage
+## 🚀 快速开始
 
-1. **Upload**: Simply drag and drop (or copy) your piano recording `.wav` files into the `uploads/` folder.
-2. **Analysis**: The system will automatically detect the file, analyze it, and generate a report on the dashboard.
-   - The original file will be processed and removed from `uploads/`.
-   - The generated MIDI file will be saved in `static/midi/`.
-3. **View**: Refresh the dashboard to see your new session.
+### 1. 环境要求
+*   Python 3.8+
+*   推荐使用虚拟环境
 
-## Project Structure
+### 2. 安装依赖
+```bash
+pip install -r requirements.txt
+```
 
-- `app.py`: Main application and background worker.
-- `analyzer.py`: Audio analysis and MIDI conversion logic.
-- `uploads/`: Drop your WAV files here.
-- `static/`: CSS, JS, and generated MIDI files.
-- `templates/`: HTML templates.
-- `instance/`: SQLite database.
+### 3. 运行应用
+```bash
+python app.py
+```
+启动后，控制台会显示访问地址（通常为 `http://127.0.0.1:5000` 或本机局域网 IP）。
+
+### 4. 开始使用
+1.  打开浏览器访问显示的地址。
+2.  将你的钢琴练习录音（`.wav` 格式）放入项目根目录下的 `uploads/` 文件夹中。
+3.  后台会自动开始分析（控制台会显示进度）。
+4.  分析完成后，刷新网页即可看到最新的练习记录。
+5.  生成的 MIDI 文件可在网页上直接下载，或在 `static/midi/` 目录中找到。
+
+## 📂 目录结构说明
+
+*   `app.py`: 项目入口，包含后台服务和 API 路由。
+*   `analyzer.py`: 音频分析核心逻辑，负责音频转 MIDI 及数据计算。
+*   `uploads/`: **[输入]** 在此处放入待处理的 `.wav` 文件。
+*   `archive/`: **[归档]** 处理完成的文件会被移动到这里。
+*   `instance/`: 存放 `sonata.db` 数据库文件。
+*   `static/`: 存放静态资源（CSS, JS, 生成的 MIDI, 图标等）。
+*   `templates/`: 前端 HTML 模板。
+
+## 📝 进阶说明
+
+*   **有效时长判定**: 系统通过 MIDI 音符密度来判断是否在“练习”。如果在一定时间内（默认 2 秒）没有音符输入，该时间段将被视为“休息”而不计入有效时长。
+
+*   **Session 分组**: 连续的练习片段（间隔小于 30 分钟）会被自动聚合为一个 Session Group 显示，方便回顾一次完整的练琴过程。
+
+---
+*Created with ❤️ for Piano Practice*

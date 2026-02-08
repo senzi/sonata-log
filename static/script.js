@@ -33,12 +33,12 @@ function updateDateDisplay() {
     const nextBtn = document.getElementById('next-day');
     if (isToday) {
         nextBtn.classList.add('disabled');
-        document.querySelector('.stat-group:nth-of-type(1) .stat-label').textContent = '今日有效时长';
-        document.querySelector('.stat-group:nth-of-type(2) .stat-label').textContent = '今日击键数';
+        document.getElementById('label-duration').textContent = '今日有效时长';
+        document.getElementById('label-keystrokes').textContent = '今日击键数';
     } else {
         nextBtn.classList.remove('disabled');
-        document.querySelector('.stat-group:nth-of-type(1) .stat-label').textContent = '该日有效时长';
-        document.querySelector('.stat-group:nth-of-type(2) .stat-label').textContent = '该日击键数';
+        document.getElementById('label-duration').textContent = '该日有效时长';
+        document.getElementById('label-keystrokes').textContent = '该日击键数';
     }
 }
 
